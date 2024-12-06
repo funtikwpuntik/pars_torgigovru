@@ -65,7 +65,6 @@ def get_region_id(city: str) -> int:
 
 
 def get_data_cian(type_lot: str, city: str, square: float, sub_rf=None):
-    # TODO: поиск по комнате
     region_id = sub_rf if sub_rf else get_region_id(city)
     json_data = get_json_data(square, region_id, type_lot)
     response = requests.post(
