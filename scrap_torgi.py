@@ -1,12 +1,30 @@
+import time
 from typing import Dict, List
 import data
 import requests
 from datetime import datetime, timedelta
+import re
 
+from data import subRF
+from scrap_cian import get_data_cian
+
+def get_characteristics(characteristics_data: List) -> Dict:
+    characteristics = {}
+    for characteristic in characteristics_data:
+        characteristics[characteristic['code']] = characteristic.get('characteristicValue', None)
+    return characteristics
+
+def get_city(address: str) -> str or None:
+
+    city = re.search(r'г\.? (?:\w+\-?)+,?', address.replace('Респ', ''))
+    if city:
+        return ' '.join(city[0].replace(',', '').split()[1:])
+    return None
 
 def get_data_from_torgi(region: int, catcode: int) -> List:
     params = data.params
-    params['dynSubjRF'] = region
+    if region:
+        params['dynSubjRF'] = region
     params['catCode'] = catcode
 
     response = requests.get(
@@ -17,10 +35,14 @@ def get_data_from_torgi(region: int, catcode: int) -> List:
     )
     lots = []
     for lot in response.json()['content']:
-        lot_info = requests.get(f'https://torgi.gov.ru/new/api/public/lotcards/{lot["id"]}').json(decode='utf-8')
+        lot_info = requests.get(f'https://torgi.gov.ru/new/api/public/lotcards/{lot["id"]}').json()
         hours = int(lot_info['timezoneOffset']) // 60
         date_end = datetime.strptime(lot_info['biddEndTime'], '%Y-%m-%dT%H:%M:%SZ') + timedelta(hours=hours)
         date_start = datetime.strptime(lot_info['auctionStartDate'], '%Y-%m-%dT%H:%M:%SZ')
+        print(lot_info['estateAddress'])
+        city = get_city(lot_info['estateAddress'])
+
+        characteristics = get_characteristics(lot_info['characteristics'])
         lots.append(
             {
                 'id': lot_info['id'],
@@ -29,9 +51,30 @@ def get_data_from_torgi(region: int, catcode: int) -> List:
                 'priceMin': lot_info['priceMin'],
                 'endTime': date_end,
                 'auctionStart': date_start,
-                'etpurl': lot_info['etpUrl'],
+                'etpurl': lot_info.get('etpUrl', None),
                 'link': f'https://torgi.gov.ru/new/public/lots/lot/{lot_info["id"]}',
+                'city': city,
+                'sub_rf': None if city else subRF[lot_info['subjectRFCode']],
             }
         )
+        if catcode == 9:
+            lots[-1]['square'] = characteristics['totalAreaRealty']
+            lots[-1]['type'] = characteristics['typeLivingQuarters']
+
+        if catcode == 100001:
+            lots[-1]['year'] = characteristics['yearProduction']
+            lots[-1]['brand'] = characteristics['carMarka']
+            lots[-1]['model'] = characteristics['carModel']
+
+            # lots[-1]['brand'] = lot_info['characteristics'][10]['characteristicValue']
+            # lots[-1]['model'] = lot_info['characteristics'][11]['characteristicValue']
+
+
+
 
     return lots
+
+for i in get_data_from_torgi(1, 9):
+    print(i['link'], i['city'], i['priceMin'], sep='\t')
+    print(get_data_cian(i['type'], i['city'], i['square'], i['sub_rf']))
+    input()
