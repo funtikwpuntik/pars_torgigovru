@@ -1,4 +1,3 @@
-import time
 from typing import Dict, List
 import data
 import requests
@@ -6,7 +5,6 @@ from datetime import datetime, timedelta
 import re
 
 from data import subRF
-from scrap_cian import get_data_cian
 
 def get_characteristics(characteristics_data: List) -> Dict:
     characteristics = {}
@@ -62,7 +60,7 @@ def get_data_from_torgi(region: int, catcode: int) -> List:
             lots[-1]['type'] = characteristics['typeLivingQuarters']
 
         if catcode == 100001:
-            lots[-1]['year'] = characteristics['yearProduction']
+            lots[-1]['year'] = int(characteristics['yearProduction'])
             lots[-1]['brand'] = characteristics['carMarka']
             lots[-1]['model'] = characteristics['carModel']
 
@@ -74,7 +72,3 @@ def get_data_from_torgi(region: int, catcode: int) -> List:
 
     return lots
 
-for i in get_data_from_torgi(1, 9):
-    print(i['link'], i['city'], i['priceMin'], sep='\t')
-    print(get_data_cian(i['type'], i['city'], i['square'], i['sub_rf']))
-    input()
