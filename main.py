@@ -4,8 +4,8 @@ from dotenv import load_dotenv
 import asyncio
 import logging
 from aiogram import Bot, Dispatcher
-from handlers import router
-from admin import router as admin_router
+from handlers.handlers import router
+from handlers.handlers import router as admin_router
 
 dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
 if os.path.exists(dotenv_path):
@@ -25,5 +25,7 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, filename='log.txt', encoding='utf-8')
+    logging.basicConfig(level=logging.INFO,
+                        stream=sys.stdout)
+                        # filename='log.txt', encoding='utf-8')
     asyncio.run(main())

@@ -36,7 +36,7 @@ def get_data_from_torgi(region: int, catcode: int) -> List:
         lot_info = requests.get(f'https://torgi.gov.ru/new/api/public/lotcards/{lot["id"]}').json()
         hours = int(lot_info['timezoneOffset']) // 60
         date_end = datetime.strptime(lot_info['biddEndTime'], '%Y-%m-%dT%H:%M:%SZ') + timedelta(hours=hours)
-        date_start = datetime.strptime(lot_info['auctionStartDate'], '%Y-%m-%dT%H:%M:%SZ')
+        date_start = datetime.strptime(lot_info['auctionStartDate'], '%Y-%m-%dT%H:%M:%SZ') + timedelta(hours=hours)
         print(lot_info['estateAddress'])
         city = get_city(lot_info['estateAddress'])
 
@@ -52,7 +52,7 @@ def get_data_from_torgi(region: int, catcode: int) -> List:
                 'etpurl': lot_info.get('etpUrl', None),
                 'link': f'https://torgi.gov.ru/new/public/lots/lot/{lot_info["id"]}',
                 'city': city,
-                'sub_rf': None if city else subRF[lot_info['subjectRFCode']],
+                'sub_rf': None if city else subRF[lot_info['subjectRFCode']]['name'],
             }
         )
         if catcode == 9:
@@ -60,7 +60,8 @@ def get_data_from_torgi(region: int, catcode: int) -> List:
             lots[-1]['type'] = characteristics['typeLivingQuarters']
 
         if catcode == 100001:
-            lots[-1]['year'] = int(characteristics['yearProduction'])
+            year = re.search(r'[0-9]{4}', characteristics['yearProduction'])
+            lots[-1]['year'] = int(year[0]) if year else None
             lots[-1]['brand'] = characteristics['carMarka']
             lots[-1]['model'] = characteristics['carModel']
 

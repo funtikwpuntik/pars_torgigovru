@@ -72,9 +72,12 @@ def get_data_cian(type_lot: str, city: str, square: float, sub_rf=None):
         # cookies=cookies,
         headers=headersCian,
         json=json_data,
-    ).json()['data']['offersSerialized'][0]['bargainTerms']['priceRur']
-
-    return response
+    ).json()['data']['offersSerialized']
+    try:
+        text = [response[0]['formattedFullInfo'], str(response[0]['bargainTerms']['priceRur']), response[0]['fullUrl']]
+    except Exception as ex:
+        text = ['Нет данных']
+    return text
 
 
 # for i in get_data_cian('квартира', "москва", 31)[::-1]:

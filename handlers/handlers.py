@@ -1,14 +1,13 @@
-from aiogram import Router, types, F
+from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import Message
-from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-import data
 from model import Lot, get_text_data, UsersModel
-from scrap_auto import get_data_auto
-from scrap_cian import get_data_cian
+from utils.keyboards import *
+from utils.scrap_auto import get_data_auto
+from utils.scrap_cian import get_data_cian
 
 
 class LotsFilter(StatesGroup):
@@ -33,65 +32,23 @@ def add_favorite(lot_price, price, lot_id):
         return '\nДобавлено в избранное\n'
     return ''
 
-def create_keyboard(buttons: list[tuple[str, str]], row_width: int = 1) -> types.InlineKeyboardMarkup:
-    """
-    Создаёт клавиатуру из списка кнопок.
-    :param buttons: Список кортежей (текст, callback_data)
-    :param row_width: Количество кнопок в строке
-    :return: InlineKeyboardMarkup
-    """
-    builder = InlineKeyboardBuilder()
-    for text, callback_data in buttons:
-        builder.add(types.InlineKeyboardButton(text=text, callback_data=callback_data))
-    builder.adjust(row_width)
-    return builder.as_markup()
 
 
-def filter_keyboard():
-    return create_keyboard([("Регион", "region"), ("Категория", "category")], 2)
 
 
-def category_keyboard():
-    return create_keyboard([("Автомобили", "auto"), ("Недвижимость", "flat")], 2)
+
+async def navigate(callback: types.CallbackQuery, state: FSMContext, key: str, direction: int, keyboard_fn):
+    state_data = await state.get_data()
+    offset = state_data[key] + direction
+    await state.update_data({key: offset})
+    lot = state_data['lots'][offset]
+    text = get_text_data(lot)
+    await callback.message.edit_text(text, reply_markup=keyboard_fn(offset, state_data['count']))
 
 
-def region_keyboard(page: int):
-    offset = page * 20
-    regions = list(data.subRF.items())[offset:offset + 20]
-    buttons = [(value, f"region?{key}") for key, value in regions]
-
-    if offset > 0:
-        buttons.append(("<<", "<<"))
-    if offset + 20 < len(data.subRF):
-        buttons.append((">>", ">>"))
-
-    return create_keyboard(buttons, row_width=2)
-
-
-def lot_keyboard(offset, count):
-    buttons = [('Анализ', 'analyze'), ('Добавить в избранное', 'favorite'), ('Избранное', 'look_favorite')]
-    if offset > 0:
-        buttons.append(("<<", "<<_lot"))
-    if offset < count - 1:
-        buttons.append((">>", ">>_lot"))
-    return create_keyboard(buttons, 3)
-
-def favorite_keyboard(offset, count):
-    buttons = [('Удалить из избранного', 'delete_favorite')]
-    if offset > 0:
-        buttons.append(("<<", "<<_favorite"))
-    if offset < count - 1:
-        buttons.append((">>", ">>_favorite"))
-    return create_keyboard(buttons, 2)
-
-def nd_keyboard():
-    buttons = [('Лоты', 'lots')]
-    return create_keyboard(buttons)
-
-def start_keyboard():
-    buttons = [('Лоты', 'lots'), ('Избранное', 'look_favorite')]
-    return create_keyboard(buttons, 2)
-
+async def update_state_and_data(state: FSMContext, new_state: State, data: dict):
+    await state.set_state(new_state)
+    await state.update_data(data)
 
 @router.message(Command("start"))
 async def start(message: Message, state: FSMContext):
@@ -102,7 +59,7 @@ async def start(message: Message, state: FSMContext):
 
 
 @router.callback_query(F.data == "lots")
-async def lots(message: Message, state: FSMContext):
+async def lots(callback: types.CallbackQuery, state: FSMContext):
     await state.set_state(LotsFilter.lots)
     lots_data = await state.get_data()
     lots = Lot()
@@ -113,22 +70,22 @@ async def lots(message: Message, state: FSMContext):
         num = await state.get_value('lot_offset')
         count = await state.get_value('count')
         text = get_text_data(lot[num])
-        await message.answer(text, reply_markup=lot_keyboard(num, count))
+        await callback.message.edit_text(text, reply_markup=lot_keyboard(num, count))
     else:
-        await message.answer('Нет данных по запросу.')
+        await callback.message.edit_text('Нет данных по запросу.', reply_markup=start_keyboard())
 
 
-@router.message(Command('filter'))
-async def filter(message: Message):
-    await message.answer('Выберите фильтр: ', reply_markup=filter_keyboard())
+@router.callback_query(F.data == 'filter')
+async def filter(callback: types.CallbackQuery):
+    await callback.message.edit_text('Выберите фильтр: ', reply_markup=filter_keyboard())
 
 
 @router.callback_query(F.data == "region")
 async def send_random_value(callback: types.CallbackQuery, state: FSMContext):
     await state.set_state(LotsFilter.region)
-
+    await state.update_data(offset=0)
     await callback.message.edit_text(text="Введите регион",
-                                     reply_markup=region_keyboard(await state.get_value('offset')))
+                                     reply_markup=region_keyboard())
 
 
 @router.callback_query(F.data == "category")
@@ -136,46 +93,35 @@ async def category(callback: types.CallbackQuery):
     await callback.message.edit_text(text="Выберите категорию:", reply_markup=category_keyboard())
 
 
-@router.message(LotsFilter.region)
-async def region(message: Message, state: FSMContext):
-    await state.update_data(region=message.text)
-    await message.answer(f'Выбран регион: {message.text}')
+@router.callback_query(F.data.split('?')[0] == 'region')
+async def region(callback: types.CallbackQuery, state: FSMContext):
+    code_region = callback.data.split('?')[1]
+    region = data.subRF[code_region]
+    await state.update_data(region=region['searchCode'])
+    await callback.message.edit_text(f'Выбран регион: {region["name"]}', reply_markup=start_keyboard())
 
 
-@router.callback_query(F.data == "flat")
+@router.callback_query(F.data.split('?')[0] == "category")
 async def flat(callback: types.CallbackQuery, state: FSMContext):
     await state.set_state(LotsFilter.category)
-    await state.update_data(category=9)
-    await callback.message.edit_text(f'Выбрана категория: Недвижимость')
-
-
-@router.callback_query(F.data == "auto")
-async def auto(callback: types.CallbackQuery, state: FSMContext):
-    await state.set_state(LotsFilter.category)
-    await state.update_data(category=100001)
-    await callback.message.edit_text(f'Выбрана категория: Автомобили')
-
+    text = ''
+    category = callback.data.split('?')[1]
+    if category == 'flat':
+        await state.update_data(category=9)
+        text = 'Недвижимость'
+    elif category == 'auto':
+        await state.update_data(category=100001)
+        text = 'Автомобили'
+    await callback.message.edit_text(f'Выбрана категория: {text}', reply_markup=start_keyboard())
 
 @router.callback_query(F.data == '>>_lot')
 async def next_lot(callback: types.CallbackQuery, state: FSMContext):
-    await state.set_state(LotsFilter.lots)
-    lots_data = await state.get_data()
-    offset = lots_data['lot_offset'] + 1
-    await state.update_data(lot_offset=offset)
-    lot = lots_data['lots'][offset]
-    text = get_text_data(lot)
-    await callback.message.edit_text(text, reply_markup=lot_keyboard(offset, lots_data['count']))
+    await navigate(callback, state, 'lot_offset', 1, lot_keyboard)
 
 
 @router.callback_query(F.data == '<<_lot')
 async def prev_lot(callback: types.CallbackQuery, state: FSMContext):
-    await state.set_state(LotsFilter.lots)
-    lots_data = await state.get_data()
-    offset = lots_data['lot_offset'] - 1
-    await state.update_data(lot_offset=offset)
-    lot = lots_data['lots'][offset]
-    text = get_text_data(lot)
-    await callback.message.edit_text(text, reply_markup=lot_keyboard(offset, lots_data['count']))
+    await navigate(callback, state, 'lot_offset', -1, lot_keyboard)
 
 
 @router.callback_query(F.data == ">>")
@@ -218,14 +164,6 @@ async def analyze(callback: types.CallbackQuery, state: FSMContext):
                                      reply_markup=lot_keyboard(offset, state_data['count']))
 
 
-
-@router.callback_query(F.data.startswith("region?"))
-async def select_region(callback: types.CallbackQuery, state: FSMContext):
-    region_id = int(callback.data.split("?")[1])
-    await state.update_data(region=region_id)
-    await callback.message.edit_text(f"Выбран регион: {region_id}")
-
-
 @router.callback_query(F.data == "look_favorite")
 async def look_favorite(callback: types.CallbackQuery, state: FSMContext):
     lots = Lot()
@@ -243,22 +181,12 @@ async def look_favorite(callback: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == '>>_favorite')
 async def next_favorite(callback: types.CallbackQuery, state: FSMContext):
-    lots_data = await state.get_data()
-    offset = lots_data['lot_offset'] + 1
-    await state.update_data(lot_offset=offset)
-    lot = lots_data['lots'][offset]
-    text = get_text_data(lot)
-    await callback.message.edit_text(text, reply_markup=favorite_keyboard(offset, lots_data['count']))
+    await navigate(callback, state, 'lot_offset', 1, favorite_keyboard)
 
 
 @router.callback_query(F.data == '<<_favorite')
 async def prev_favorite(callback: types.CallbackQuery, state: FSMContext):
-    lots_data = await state.get_data()
-    offset = lots_data['lot_offset'] - 1
-    await state.update_data(lot_offset=offset)
-    lot = lots_data['lots'][offset]
-    text = get_text_data(lot)
-    await callback.message.edit_text(text, reply_markup=favorite_keyboard(offset, lots_data['count']))
+    await navigate(callback, state, 'lot_offset', -1, favorite_keyboard)
 
 @router.callback_query(F.data == 'favorite')
 async def favorite(callback: types.CallbackQuery, state: FSMContext):
@@ -280,4 +208,4 @@ async def delete_favorite(callback: types.CallbackQuery, state: FSMContext):
     lot = lots.get_favorites()
     await state.update_data({'count': len(lot), 'lot_offset': 0, 'lots': lot})
     text = 'Удалено из избранного'
-    await callback.message.edit_text(text, reply_markup=favorite_keyboard(state_data['lot_offset'], state_data['count']))
+    await callback.message.edit_text(text, reply_markup=nd_keyboard())

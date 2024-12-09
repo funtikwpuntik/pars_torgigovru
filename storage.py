@@ -27,6 +27,7 @@ class LotsStorage:
                 )
                 self.session.commit()
         except sqlalchemy.exc.IntegrityError:
+            self.session.commit()
             return '{ERROR: Lot already exist}'
         return '{success}'
 
@@ -78,7 +79,7 @@ class LotsStorage:
 
     def delete_non_actual_favorites(self):
         now = datetime.now()
-        subq = self.session.execute(select(Lots.id).where(Lots.date_end < now))
+        subq = self.session.execute(select(Lots.id).where(Lots.date_end < now)).scalars().all()
         self.session.execute(
             delete(Favorites).where(Favorites.lot_id.in_(subq))
         )

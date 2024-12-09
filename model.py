@@ -1,6 +1,6 @@
 from typing import List
 
-from scrap_torgi import get_data_from_torgi
+from utils.scrap_torgi import get_data_from_torgi
 from storage import LotsStorage, UsersStorage
 
 
