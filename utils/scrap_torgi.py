@@ -1,46 +1,55 @@
-from typing import Dict, List
-import data
-import requests
-from datetime import datetime, timedelta
 import re
+from datetime import datetime, timedelta
+from typing import Dict, List
 
-from data import subRF
+import requests
 
+from utils import data
+
+
+# Функция для извлечения характеристик из данных
 def get_characteristics(characteristics_data: List) -> Dict:
     characteristics = {}
-    for characteristic in characteristics_data:
+    for characteristic in characteristics_data:  # Итерация по списку характеристик
         characteristics[characteristic['code']] = characteristic.get('characteristicValue', None)
-    return characteristics
+    return characteristics  # Возврат словаря характеристик
 
+
+# Функция для извлечения города из адреса
 def get_city(address: str) -> str or None:
-
-    city = re.search(r'г\.? (?:\w+\-?)+,?', address.replace('Респ', ''))
+    city = re.search(r'г\.? (?:\w+\-?)+,?', address.replace('Респ', ''))  # Поиск названия города
     if city:
-        return ' '.join(city[0].replace(',', '').split()[1:])
-    return None
+        return ' '.join(city[0].replace(',', '').split()[1:])  # Удаление лишних символов и возврат города
+    return None  # Если город не найден, вернуть None
 
+
+# Функция для получения данных с портала torgi.gov.ru
 def get_data_from_torgi(region: int, catcode: int) -> List:
-    params = data.params
-    if region:
+    params = data.params  # Основные параметры запроса
+    if region:  # Если регион указан, добавить его в параметры
         params['dynSubjRF'] = region
-    params['catCode'] = catcode
+    params['catCode'] = catcode  # Добавление кода категории
 
+    # Выполнение запроса для поиска лотов
     response = requests.get(
         'https://torgi.gov.ru/new/api/public/lotcards/search',
-        # cookies=cookies,
-        params=params,
-        headers=data.headers,
+        params=params,  # Параметры запроса
+        headers=data.headers,  # Заголовки запроса
     )
-    lots = []
+    lots = []  # Список для сохранения информации о лотах
+
+    # Итерация по полученным данным
     for lot in response.json()['content']:
+        # Запрос для получения полной информации о конкретном лоте
         lot_info = requests.get(f'https://torgi.gov.ru/new/api/public/lotcards/{lot["id"]}').json()
-        hours = int(lot_info['timezoneOffset']) // 60
+        hours = int(lot_info['timezoneOffset']) // 60  # Часовой пояс
+        # Конвертация дат с учетом часового пояса
         date_end = datetime.strptime(lot_info['biddEndTime'], '%Y-%m-%dT%H:%M:%SZ') + timedelta(hours=hours)
         date_start = datetime.strptime(lot_info['auctionStartDate'], '%Y-%m-%dT%H:%M:%SZ') + timedelta(hours=hours)
-        print(lot_info['estateAddress'])
-        city = get_city(lot_info['estateAddress'])
+        city = get_city(lot_info['estateAddress'])  # Получение города из адреса
 
-        characteristics = get_characteristics(lot_info['characteristics'])
+        characteristics = get_characteristics(lot_info['characteristics'])  # Получение характеристик лота
+        # Формирование записи для списка лотов
         lots.append(
             {
                 'id': lot_info['id'],
@@ -52,24 +61,23 @@ def get_data_from_torgi(region: int, catcode: int) -> List:
                 'etpurl': lot_info.get('etpUrl', None),
                 'link': f'https://torgi.gov.ru/new/public/lots/lot/{lot_info["id"]}',
                 'city': city,
-                'sub_rf': None if city else subRF[lot_info['subjectRFCode']]['name'],
+                'sub_rf': None if city else data.subRF[lot_info['subjectRFCode']]['name'],  # Определение региона
             }
         )
+        # Обработка данных для категории "Недвижимость" (catcode == 9)
         if catcode == 9:
-            lots[-1]['square'] = characteristics['totalAreaRealty']
-            lots[-1]['type'] = characteristics['typeLivingQuarters']
+            lots[-1]['square'] = characteristics['totalAreaRealty']  # Площадь объекта
+            lots[-1]['type'] = characteristics['typeLivingQuarters']  # Тип объекта
 
+        # Обработка данных для категории "Автомобили" (catcode == 100001)
         if catcode == 100001:
+            if lot_info['lotName'] not in lot_info['lotDescription'] and lot_info.get('lotName', None):
+                # Если название отсутствует в описании, добавляем его
+                lots[-1]['description'] = lot_info['lotName'] + ' ' + lots[-1]['description']
+            # Извлечение года выпуска из данных
             year = re.search(r'[0-9]{4}', characteristics['yearProduction'])
             lots[-1]['year'] = int(year[0]) if year else None
-            lots[-1]['brand'] = characteristics['carMarka']
-            lots[-1]['model'] = characteristics['carModel']
+            lots[-1]['brand'] = characteristics['carMarka']  # Марка автомобиля
+            lots[-1]['model'] = characteristics['carModel']  # Модель автомобиля
 
-            # lots[-1]['brand'] = lot_info['characteristics'][10]['characteristicValue']
-            # lots[-1]['model'] = lot_info['characteristics'][11]['characteristicValue']
-
-
-
-
-    return lots
-
+    return lots  # Возврат списка лотов

@@ -4,6 +4,7 @@ from aiogram.filters import BaseFilter
 from aiogram.types import Message
 
 
+# фильтр для Админа
 class ChatFilter(BaseFilter):  # [1]
     def __init__(self, chat: Union[str, list]):  # [2]
         self.chat = chat
