@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import sys
 
 from aiogram import Bot, Dispatcher
 from dotenv import load_dotenv
@@ -31,6 +32,6 @@ async def main() -> None:
 if __name__ == "__main__":
     # Настройка логирования с выводом в файл log.txt, используя кодировку utf-8
     logging.basicConfig(level=logging.INFO,
-                        # stream=sys.stdout)  # Можно настроить вывод в консоль
-                        filename='log.txt', encoding='utf-8')  # Логи сохраняются в файл
+                        stream=sys.stdout)  # Можно настроить вывод в консоль
+                        # filename='log.txt', encoding='utf-8')  # Логи сохраняются в файл
     asyncio.run(main())  # Запускаем асинхронную функцию main

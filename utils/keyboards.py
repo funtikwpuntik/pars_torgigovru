@@ -51,27 +51,28 @@ def lot_keyboard(offset, count):
     buttons = [
         ('Анализ', 'analyze'),  # Кнопка "Анализ"
         ('Добавить в избранное', 'favorite'),  # Кнопка "Добавить в избранное"
-        ('Избранное', 'look_favorite'),  # Кнопка "Избранное"
-        ('Фильтр', 'filter'),  # Кнопка "Фильтр"
+        ('Назад', 'start'),  # Кнопка "Избранное"
+        # ('Фильтр', 'filter'),  # Кнопка "Фильтр"
     ]
     if offset > 0:  # Добавление кнопки "Назад" по списку лотов
         buttons.append(("<<", "<<_lot"))
     if offset < count - 1:  # Добавление кнопки "Вперед" по списку лотов
         buttons.append((">>", ">>_lot"))
-    return create_keyboard(buttons, 4)  # 4 кнопки в строке
+    return create_keyboard(buttons, 3)  # 4 кнопки в строке
 
 
 # Клавиатура для управления избранным
 def favorite_keyboard(offset, count):
     buttons = [
-        ('Лоты', 'lots'),  # Кнопка "Лоты"
+        #('Лоты', 'lots'),  # Кнопка "Лоты"
         ('Удалить из избранного', 'delete_favorite'),  # Кнопка "Удалить из избранного"
+        ('Назад', 'start'),
     ]
     if offset > 0:  # Добавление кнопки "Назад" по списку избранного
         buttons.append(("<<", "<<_favorite"))
     if offset < count - 1:  # Добавление кнопки "Вперед" по списку избранного
         buttons.append((">>", ">>_favorite"))
-    return create_keyboard(buttons, 2, 'start')  # 2 кнопки в строке, кнопка "Назад" с callback 'start'
+    return create_keyboard(buttons, 2)  # 2 кнопки в строке, кнопка "Назад" с callback 'start'
 
 
 # Пустая клавиатура (можно доработать под конкретные нужды)
@@ -84,10 +85,11 @@ def nd_keyboard():
 def start_keyboard():
     buttons = [
         ('Лоты', 'lots'),  # Кнопка "Лоты"
+        ('Обновить все лоты', 'refresh_lots'),
         ('Избранное', 'look_favorite'),  # Кнопка "Избранное"
         ('Фильтр', 'filter'),  # Кнопка "Фильтр"
     ]
-    return create_keyboard(buttons, 3)  # 3 кнопки в строке
+    return create_keyboard(buttons, 2)  # 3 кнопки в строке
 
 
 # Клавиатура для администраторов

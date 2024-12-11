@@ -7,6 +7,11 @@ import requests
 from utils import data
 
 
+def get_session():
+    session = requests.Session()
+    session.headers.update(data.headers)
+    return session
+
 # Функция для извлечения характеристик из данных
 def get_characteristics(characteristics_data: List) -> Dict:
     characteristics = {}
@@ -24,14 +29,18 @@ def get_city(address: str) -> str or None:
 
 
 # Функция для получения данных с портала torgi.gov.ru
-def get_data_from_torgi(region: int, catcode: int) -> List:
+def get_data_from_torgi(region: int, catcode: int, page=None) -> List:
     params = data.params  # Основные параметры запроса
     if region:  # Если регион указан, добавить его в параметры
         params['dynSubjRF'] = region
     params['catCode'] = catcode  # Добавление кода категории
-
+    if page:
+        params['withFacets'] = False
+        params['page'] = page
     # Выполнение запроса для поиска лотов
-    response = requests.get(
+    session = get_session()
+
+    response = session.get(
         'https://torgi.gov.ru/new/api/public/lotcards/search',
         params=params,  # Параметры запроса
         headers=data.headers,  # Заголовки запроса
@@ -41,7 +50,7 @@ def get_data_from_torgi(region: int, catcode: int) -> List:
     # Итерация по полученным данным
     for lot in response.json()['content']:
         # Запрос для получения полной информации о конкретном лоте
-        lot_info = requests.get(f'https://torgi.gov.ru/new/api/public/lotcards/{lot["id"]}').json()
+        lot_info = session.get(f'https://torgi.gov.ru/new/api/public/lotcards/{lot["id"]}').json()
         hours = int(lot_info['timezoneOffset']) // 60  # Часовой пояс
         # Конвертация дат с учетом часового пояса
         date_end = datetime.strptime(lot_info['biddEndTime'], '%Y-%m-%dT%H:%M:%SZ') + timedelta(hours=hours)
@@ -66,9 +75,16 @@ def get_data_from_torgi(region: int, catcode: int) -> List:
         )
         # Обработка данных для категории "Недвижимость" (catcode == 9)
         if catcode == 9:
-            lots[-1]['square'] = characteristics['totalAreaRealty']  # Площадь объекта
-            lots[-1]['type'] = characteristics['typeLivingQuarters']  # Тип объекта
-
+            lots[-1]['square'] = characteristics['totalAreaRealty']  # Площадь объекте
+            type_flat = characteristics['typeLivingQuarters'].lower()  # Тип объекта
+            if type_flat == 'комната' or type_flat == 'квартира':
+                lots[-1]['type'] = type_flat
+            elif type_flat == 'жилое' and 'доля' not in lot_info['lotDescription'].lower():
+                lots[-1]['type'] = 'квартира'
+            elif type_flat == 'доля' or 'доля' in lot_info['lotDescription'].lower():
+                lots[-1]['type'] = 'доля'
+            else:
+                lots[-1]['type'] = 'квартира'
         # Обработка данных для категории "Автомобили" (catcode == 100001)
         if catcode == 100001:
             if lot_info['lotName'] not in lot_info['lotDescription'] and lot_info.get('lotName', None):
@@ -79,5 +95,19 @@ def get_data_from_torgi(region: int, catcode: int) -> List:
             lots[-1]['year'] = int(year[0]) if year else None
             lots[-1]['brand'] = characteristics['carMarka']  # Марка автомобиля
             lots[-1]['model'] = characteristics['carModel']  # Модель автомобиля
-
+    session.close()
     return lots  # Возврат списка лотов
+
+def get_pages(region: int, catcode: int):
+    params = data.params  # Основные параметры запроса
+    if region:  # Если регион указан, добавить его в параметры
+        params['dynSubjRF'] = region
+    params['catCode'] = catcode  # Добавление кода категории
+
+    # Выполнение запроса для поиска лотов
+    response = requests.get(
+        'https://torgi.gov.ru/new/api/public/lotcards/search',
+        params=params,  # Параметры запроса
+        headers=data.headers,  # Заголовки запроса
+    )
+    return response.json()['totalPages']
