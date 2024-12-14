@@ -4,7 +4,7 @@
 
 pip install -r requirements.txt
 
-### создать файл .env, в нем прописать переменную BOT_API=""
+### В файле .env указать апи бота `BOT_API=""`
 
 ### В файле `admin.py` прописать id админа (id в телеграмме) в строке `router.message.filter(ChatFilter([<id>]))` 
 
