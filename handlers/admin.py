@@ -7,7 +7,7 @@ from model import UsersModel
 from utils.keyboards import admin_keyboard
 
 router = Router()
-#!router.message.filter(ChatFilter([]))
+router.message.filter(ChatFilter([]))
 
 
 # Обработчик команды
