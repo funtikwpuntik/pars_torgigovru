@@ -33,8 +33,8 @@ class LotsStorage:
                 self.session.commit()  # Сохранение изменений
         except sqlalchemy.exc.IntegrityError:
             self.session.commit()  # Обработка ошибок дублирования
-            return '{ERROR: Lot already exist}'
-        return '{success}'
+            return {'exit': 1}
+        return {'success': True}
 
     # Получение списка лотов по региону и категории
     def get_data(self, region_id: int, category_id: int):

@@ -1,15 +1,25 @@
+import time
 from typing import Dict, List
-
+import httpx
 import requests
-
 from utils.data import headersAuto, cookiesAuto
 
 
+def get_session():
+
+    session = httpx.Client(http2=True)
+    session.headers.update(headersAuto)
+    session.cookies.update(cookiesAuto)
+    return session
+
+
+
 # Получение ID геолокации города
-def get_geo_id(city: str) -> int:
+def get_geo_id(city: str, session) -> int:
     """
     Получает geo_id для указанного города с сайта auto.ru.
 
+    :param session:
     :param city: Название города
     :return: Geo ID города
     """
@@ -20,20 +30,31 @@ def get_geo_id(city: str) -> int:
             2,
         ],
     }
-    response = requests.post(
-        'https://auto.ru/-/ajax/desktop-search/getGeoSuggest/',
-        cookies=cookiesAuto,  # cookies для авторизации
-        headers=headersAuto,  # Заголовки запроса
+    response = session.post(
+        'https://auto.ru/-/ajax/desktop/getGeoSuggest/',
         json=json_data  # Данные запроса
-    ).json()[0]['id']
-    return response  # Возвращаем geo_id
+    )
+    response.encoding = 'utf-8'
+
+    geo_id = 0
+    for _ in range(3):
+        try:
+            geo_id = response.json()[0]['id']
+            break
+        except requests.exceptions.JSONDecodeError:
+            time.sleep(2)
+            continue
+
+
+    return geo_id  # Возвращаем geo_id
 
 
 # Получение параметров поиска автомобилей
-def get_parameters(geo: int, query: str, year: int) -> Dict:
+def get_parameters(geo: int, query: str, year: int, session) -> Dict:
     """
     Генерирует параметры для запроса поиска автомобиля.
 
+    :param session:
     :param geo: Geo ID города
     :param query: Строка запроса (например, "Toyota Corolla")
     :param year: Год выпуска автомобиля
@@ -48,10 +69,8 @@ def get_parameters(geo: int, query: str, year: int) -> Dict:
             geo,  # Geo ID города
         ],
     }
-    json_data = requests.post(
+    json_data = session.post(
         'https://auto.ru/-/ajax/desktop-search/searchlineSuggest/',
-        cookies=cookiesAuto,
-        headers=headersAuto,
         json=json_data
     ).json()['suggests'][0]['params']
 
@@ -65,6 +84,7 @@ def get_parameters(geo: int, query: str, year: int) -> Dict:
             geo
         ]
     })
+
     return json_data
 
 
@@ -82,20 +102,26 @@ def get_data_auto(city: str, brand: str, model: str, year: int, sub_rf=None) -> 
     """
     if sub_rf:  # Если указан регион, переопределяем город
         city = sub_rf
-    geo = get_geo_id(city)  # Получаем geo_id города
-    params = get_parameters(geo, f'{brand} {model}', year)  # Генерируем параметры поиска
-
+    session = get_session()
+    geo = get_geo_id(city, session)  # Получаем geo_id города
+    params = get_parameters(geo, f'{brand} {model}', year, session)  # Генерируем параметры поиска
+    if geo == 0:
+        session.close()
+        return ['Ошибка при запросе']
     try:
         # Выполняем запрос к API auto.ru
-        response = requests.post(
+        response = session.post(
             'https://auto.ru/-/ajax/desktop-search/listing/',
-            cookies=cookiesAuto,
-            headers=headersAuto,
             json=params
         ).json()['offers'][0]  # Получаем первый найденный автомобиль
 
         # Формируем ответ с данными автомобиля
         ans = [response['title'], str(response['price_info']['RUR']), response['url']]
+
     except Exception as ex:  # Если возникает ошибка
         ans = ['Нет данных']  # Сообщение об отсутствии данных
+    finally:
+        session.close()
+
     return ans
+

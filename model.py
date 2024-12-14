@@ -26,10 +26,12 @@ class Lot:
         self.lots = LotsStorage()  # Инициализация хранилища данных для лотов
 
     # Добавление новых лотов в хранилище
-    def add_lots(self, region_id: int, category_code: int) -> List:
+    def add_lots(self, region_id: int, category_code: int, page=None) -> List:
         # Получение данных о лотах с торговой площадки
-        lots = get_data_from_torgi(region_id, category_code)
-
+        if page:
+            lots = get_data_from_torgi(region_id, category_code, page)
+        else:
+            lots = get_data_from_torgi(region_id, category_code)
         # Форматирование данных о лотах для сохранения в хранилище
         data = [
             {

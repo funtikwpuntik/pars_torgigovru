@@ -4,10 +4,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import Message
 
-from model import Lot, get_text_data
+from model import Lot, get_text_data, UsersModel
 from utils.keyboards import *
 from utils.scrap_auto import get_data_auto
 from utils.scrap_cian import get_data_cian
+from utils.scrap_torgi import get_pages
 
 
 # Определение группы состояний для управления фильтром лотов
@@ -54,6 +55,7 @@ async def navigate(callback: types.CallbackQuery, state: FSMContext, key: str, d
 async def start(message: Message, state: FSMContext):
     await state.set_state(LotsFilter.lots)  # Установка состояния
     await state.set_data(default_values)  # Сброс данных к значениям по умолчанию
+    UsersModel().add_user(message) # добавить пользователя в базу
     await message.answer(f'Hi!', reply_markup=start_keyboard())  # Отправка приветственного сообщения
 
 
@@ -69,14 +71,11 @@ async def lots(callback: types.CallbackQuery, state: FSMContext):
     await state.set_state(LotsFilter.lots)  # Установка состояния для лотов
     lots_data = await state.get_data()  # Получение данных состояния
     lots = Lot()  # Инициализация модели для работы с лотами
-    lots.add_lots(lots_data['region'], lots_data['category'])  # Загрузка лотов из хранилища
     lot = lots.get_data_from_storage(lots_data['region'], lots_data['category'])  # Получение данных лотов
     if lot:  # Если есть доступные лоты
         await state.update_data({'count': len(lot), 'lot_offset': 0, 'lots': lot})  # Обновление данных состояния
-        num = await state.get_value('lot_offset')
-        count = await state.get_value('count')
-        text = get_text_data(lot[num])  # Формирование текста первого лота
-        await callback.message.edit_text(text, reply_markup=lot_keyboard(num, count))  # Отображение лота
+        text = get_text_data(lot[0])  # Формирование текста первого лота
+        await callback.message.edit_text(text, reply_markup=lot_keyboard(0, len(lot)))  # Отображение лота
     else:
         await callback.message.edit_text('Нет данных по запросу.',
                                          reply_markup=start_keyboard())  # Сообщение об отсутствии данных
@@ -143,6 +142,24 @@ async def prev_lot(callback: types.CallbackQuery, state: FSMContext):
     await navigate(callback, state, 'lot_offset', -1,
                    lot_keyboard)  # Переход к предыдущему лоту с использованием функции navigate
 
+
+# Обработчик кнопки "вперед" в просмотре регионов
+@router.callback_query(F.data == ">>")
+async def next_region(callback: types.CallbackQuery, state: FSMContext):
+    await state.set_state(LotsFilter.region) # Установка состояния
+    offset = await state.get_value('offset') + 1 # Смещение "страницы"
+    await state.update_data(offset=offset) # Обновление параметра
+    await callback.message.edit_text(text="Введите регион", # Переход к следующему списку
+                                     reply_markup=region_keyboard(await state.get_value('offset')))
+
+# Обработчик кнопки "назад" в просмотре регионов
+@router.callback_query(F.data == "<<")
+async def prev_region(callback: types.CallbackQuery, state: FSMContext):
+    await state.set_state(LotsFilter.region) # Установка состояния
+    offset = await state.get_value('offset') - 1 # Смещение "страницы"
+    await state.update_data(offset=offset) # Обновление параметра
+    await callback.message.edit_text(text="Введите регион", # Переход к предыдущему списку
+                                     reply_markup=region_keyboard(await state.get_value('offset')))
 
 # Обработчик кнопки "анализ" для анализа текущего лота
 @router.callback_query(F.data == "analyze")
@@ -220,4 +237,19 @@ async def delete_favorite(callback: types.CallbackQuery, state: FSMContext):
     lot = lots.get_favorites()  # Обновление списка избранных
     await state.update_data({'count': len(lot), 'lot_offset': 0, 'lots': lot})  # Сброс состояния
     text = 'Удалено из избранного'  # Сообщение об удалении
-    await callback.message.edit_text(text, reply_markup=nd_keyboard())  # Отображение сообщения
+    await callback.message.edit_text(text, reply_markup=create_keyboard([], prev='look_favorite'))  # Отображение сообщения
+
+
+@router.callback_query(F.data == 'refresh_lots')
+async def refresh(callback: types.CallbackQuery, state: FSMContext):
+    await state.set_state(LotsFilter.lots)  # Установка состояния для лотов
+    lots_data = await state.get_data()  # Получение данных состояния
+    lots = Lot()  # Инициализация модели для работы с лотами
+    pages = get_pages(lots_data['region'], lots_data['category'])
+    for i in range(pages):
+        await callback.message.edit_text(f'Обработка {i}/{pages}')
+        if lots.add_lots(lots_data['region'], lots_data['category'], i).get('exit', False):
+            break
+
+    await callback.message.edit_text('Лоты обновлены!',
+                                         reply_markup=start_keyboard())  # Сообщение об отсутствии данных
